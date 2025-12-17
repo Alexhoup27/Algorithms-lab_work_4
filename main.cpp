@@ -5,87 +5,101 @@
 #include <fstream>
 #include <sstream>
 #include <utility>
-#include <stack>
 #include <cmath>
-#include <map>
 
-struct MadeReader{
+struct MadeReader {
     std::ifstream reader;
     int _len;
 };
 
-struct FlightNumber{
+struct FlightNumber {
     std::string airport;
     int id;
 };
 
-struct DepartureTime
-{
+struct DepartureTime {
     int hh;
     int mm;
 };
 
-struct Record{
+struct Record {
     FlightNumber flight_number;
     DepartureTime time;
     int cost;
     std::vector<std::string> departure_days;
+
+    bool operator== (Record& to_comp){
+        if (flight_number.airport == to_comp.flight_number.airport &&
+        flight_number.id == to_comp.flight_number.id &&
+        time.hh == to_comp.time.hh &&
+        time.mm == to_comp.time.mm &&
+        cost == to_comp.cost){
+            bool key = true;
+            for (auto elem:departure_days){
+                if (std::count(to_comp.departure_days.begin(), to_comp.departure_days.begin(), elem) == 0){
+                    return false;
+                }
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
-std::string slice(std::string data, int first_ind, int second_ind){
-    std::string result="";
-    if (second_ind > data.size()){
-        std::cout<<"Second ind error";
+std::string slice(std::string data, int first_ind, int second_ind) {
+    std::string result = "";
+    if (second_ind > data.size()) {
+        std::cout << "Second ind error";
         return data;
     }
-    if (first_ind < 0){
-        std::cout<<"First ind error";
+    if (first_ind < 0) {
+        std::cout << "First ind error";
     }
-    for (int ind = first_ind; ind < second_ind; ind ++){
+    for (int ind = first_ind; ind < second_ind; ind++) {
         result += data[ind];
     }
     return result;
 }
 
-std::vector<std::string> split(std::string line, char delim){
+std::vector<std::string> split(std::string line, char delim) {
     std::vector<std::string> to_return;
     std::stringstream ss(line);
     std::string part_line;
-    while (std::getline(ss, part_line, delim)){
+    while (std::getline(ss, part_line, delim)) {
         to_return.push_back(part_line);
     }
     return to_return;
 }
 
-std::string make_string_from_Record(Record data){
+std::string make_string_from_Record(Record data) {
     std::string result;
     result += data.flight_number.airport;
     result += std::to_string(data.flight_number.id) + " ";
-    result += std::to_string(data.time.hh) +":"\
-    + std::to_string(data.time.mm) + " ";
+    result += std::to_string(data.time.hh) + ":"\
+ + std::to_string(data.time.mm) + " ";
     result += std::to_string(data.cost) + " ";
-    for (std::string elem: data.departure_days){
+    for (std::string elem: data.departure_days) {
         result += elem + " ";
     }
     return result;
 }
 
-MadeReader make_reader(std::string root_to_input_file){
+MadeReader make_reader(std::string root_to_input_file) {
     MadeReader to_return;
     std::ifstream reader(root_to_input_file);
     std::string line_n;
-    int n=0;
-    if (std::getline(reader, line_n)){
+    int n = 0;
+    if (std::getline(reader, line_n)) {
         n = std::stoi(line_n);
-    }else{
-        throw std::invalid_argument( "Wrong file!" );
+    } else {
+        throw std::invalid_argument("Wrong file!");
     }
     to_return.reader = std::move(reader);
     to_return._len = n;
     return to_return;
 }
 
-Record make_record(std::string line){
+Record make_record(std::string line) {
     Record to_return;
     auto to_rec = split(line, ',');
     FlightNumber now_FN;
@@ -98,52 +112,169 @@ Record make_record(std::string line){
     to_return.flight_number = now_FN;
     to_return.time = now_DP;
     to_return.cost = std::stoi(to_rec[2]);
-    if (to_rec.size() == 4){
-        to_return.departure_days  = split(to_rec[3], ' ');
-    }else{
+    if (to_rec.size() == 4) {
+        to_return.departure_days = split(to_rec[3], ' ');
+    } else {
         to_return.departure_days = {};
     }
     return to_return;
 }
 
-class HashTable{
+class NewHashTable {
 private:
-    std::map<std::string, Record> data;
+    Record *data;
+    bool *statuses;
+    int length;
+    int count_of_elements;
 
-    std::string get_key(Record rec){
-        std::string result;
-        result += rec.flight_number.airport;
-        result += std::to_string(rec.flight_number.id);
-        result += std::to_string(rec.time.hh);
-        result += std::to_string(rec.time.mm);
+    int GetFirstKey(Record rec) {
+        int key = rec.flight_number.airport[0] + rec.flight_number.airport[1];
+        key += rec.flight_number.id;
+        key += rec.time.hh;
+        key += rec.time.mm;
+        key %= length;
+        return key;
     }
+
+    std::pair<bool, int> GetSecondKey(int key){
+        std::pair<bool, int> to_return;
+        int iter_num = 1;
+        while (statuses[key] && iter_num <= length * 0.7) {
+            key += iter_num * iter_num;
+            key %= length;
+            iter_num++;;
+        }
+        if (statuses[key] == false){
+            to_return.first = true;
+            to_return.second = key;
+        }else{
+            to_return.first = false;
+            to_return.second = -1;
+        }
+        return to_return;
+    }
+
+    void resize(bool flag){
+        int old_length = length;
+        if (flag){
+            length *= 2;
+        }else{
+            length /= 2;
+        }
+        auto old_data = data;
+        data = new Record[length];
+        bool* statuses = new bool[length];
+        for (int i=0; i< length; i++){
+            statuses[i] = false;
+        }
+        for (int i=0; i< old_length; i++){
+            add(old_data[i]);
+        }
+    }
+
 public:
-    ~HashTable(){
-        data.clear();
+
+    bool add(Record rec) {
+        if (count_of_elements + 1 >= length*0.8){
+            resize(true);
+        }
+        int now_key = GetFirstKey(rec);
+        if (statuses[now_key] == false) {
+            data[now_key] = rec;
+            statuses[now_key] = true;
+            count_of_elements++;
+            return true;
+        } else {
+           auto new_key = GetSecondKey(now_key);
+           if (new_key.first){
+               data[new_key.second] = rec;
+               statuses[new_key.second] = true;
+               count_of_elements++;
+               return true;
+           }else{
+               resize(1);
+               return add(rec);
+           }
+        }
     }
 
-    bool add_elem(Record elem){
-        std::string key = get_key(elem);
-        data[key] = elem;
-        return true;
+    bool dispose(Record rec){
+        int key = GetFirstKey(rec);
+        if (statuses[key] == false){
+            return false;
+        }else{
+            auto new_key = find_elem(rec);
+            if (new_key.first){
+                count_of_elements --;
+                statuses[new_key.second] = false;
+                Record* old_data = data;
+                data = new Record[length];
+                auto old_statuses = statuses;
+                statuses = new bool[length];
+                for (int i=0; i< length; i++){
+                    statuses[i] = false;
+                }
+                for (int i = 0; i< length; i++){
+                    if (old_statuses[i]){
+                        return add(old_data[i]); // а что если тут не получилось добавить ?
+                    }
+                }
+            }
+        }
+        return false;
     }
 
-    bool del_elem(Record elem) {
-        std::string key = get_key(elem);
-        data.erase(key);
-        return true;
+    std::pair<bool, int> find_elem(Record rec){
+        int key = GetFirstKey(rec);
+        if (data[key] == rec){
+            return {true, key};
+        }else {
+            int iter_num = 1;
+            bool flag = false;
+            while (iter_num < length * 0.7 && statuses[key]) {
+                key += iter_num * iter_num;
+                key %= length;
+                iter_num++;
+                if (data[key] == rec) {
+                    flag = true;
+                    break;
+                }
+            }
+            if (flag) {
+                return {true, key};
+            }
+        }
+        return {false, -1};
     }
 
-    void print(){
-        for (auto iter = data.begin(); iter != data.end() ; iter++){
-            std::cout<<"Hash key:"<<iter->first<<" Val:"<<
-            make_string_from_Record(iter->second)<< std::endl;
+    void print(Record rec){
+        for (int i=0; i< length; i++){
+            if (statuses[i]){
+                std::cout<<"Key: "<<i<<", Record: "<< make_string_from_Record(data[i]);
+            }
         }
 
     }
+
+
+    NewHashTable(int _len) {
+        data = new Record[_len];
+        length = _len;
+        statuses = new bool[_len];
+        count_of_elements = 0;
+        for (int i=0; i< length; i++){
+            statuses[i] = false;
+        }
+    }
+
+    ~NewHashTable() {
+        delete data;
+        delete statuses;
+    }
 };
 
-int main(){
+
+int main() {
 
     return 0;
 }

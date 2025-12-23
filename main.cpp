@@ -35,8 +35,29 @@ struct Record {
         time.mm == to_comp.time.mm &&
         cost == to_comp.cost){
             bool key = true;
+            if (departure_days.size() == to_comp.departure_days.size()) {
+                if (departure_days.empty()){
+                    return true;
+                }
+                for (auto elem: departure_days) {
+                    if (departure_days != to_comp.departure_days) {
+                        return false;
+                    }
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    bool operator!= (Record& to_comp){
+        if (flight_number.airport != to_comp.flight_number.airport &&
+            flight_number.id != to_comp.flight_number.id &&
+            time.hh != to_comp.time.hh &&
+            time.mm != to_comp.time.mm &&
+            cost != to_comp.cost){
+            bool key = true;
             for (auto elem:departure_days){
-                if (std::count(to_comp.departure_days.begin(), to_comp.departure_days.begin(), elem) == 0){
+                if (departure_days == to_comp.departure_days){
                     return false;
                 }
                 return true;
@@ -136,15 +157,23 @@ private:
         return key;
     }
 
-    std::pair<bool, int> GetSecondKey(int key){
+    int GetSecondKey(int key, int iter_num){
+        key += iter_num * iter_num;
+        key %= length;
+        return key;
+    }
+
+    std::pair<bool, int> FindFree(int key, Record elem){
         std::pair<bool, int> to_return;
         int iter_num = 1;
         while (statuses[key] && iter_num <= length * 0.7) {
-            key += iter_num * iter_num;
-            key %= length;
+            key = GetSecondKey(key, iter_num);
+            if (data[key] == elem){
+                return {false, -1};
+            }
             iter_num++;;
         }
-        if (statuses[key] == false){
+        if (statuses[key] == false && (data[key] == elem)==false){
             to_return.first = true;
             to_return.second = key;
         }else{
@@ -161,14 +190,17 @@ private:
         }else{
             length /= 2;
         }
-        auto old_data = data;
+        Record* old_data = data;
         data = new Record[length];
-        bool* statuses = new bool[length];
+        auto old_statuses = statuses;
+        statuses = new bool[length];
         for (int i=0; i< length; i++){
             statuses[i] = false;
         }
-        for (int i=0; i< old_length; i++){
-            add(old_data[i]);
+        for (int i = 0; i< old_length; i++){
+            if (old_statuses[i]){
+                add(old_data[i]);
+            }
         }
     }
 
@@ -185,7 +217,7 @@ public:
             count_of_elements++;
             return true;
         } else {
-           auto new_key = GetSecondKey(now_key);
+           auto new_key = FindFree(now_key, rec);
            if (new_key.first){
                data[new_key.second] = rec;
                statuses[new_key.second] = true;
@@ -199,25 +231,31 @@ public:
     }
 
     bool dispose(Record rec){
-        int key = GetFirstKey(rec);
-        if (statuses[key] == false){
+        auto new_key = find_elem(rec);
+        if (new_key.first == false){
             return false;
         }else{
-            auto new_key = find_elem(rec);
-            if (new_key.first){
-                count_of_elements --;
-                statuses[new_key.second] = false;
-                Record* old_data = data;
-                data = new Record[length];
-                auto old_statuses = statuses;
-                statuses = new bool[length];
-                for (int i=0; i< length; i++){
-                    statuses[i] = false;
-                }
-                for (int i = 0; i< length; i++){
-                    if (old_statuses[i]){
-                        return add(old_data[i]); // а что если тут не получилось добавить ?
+            if (new_key.first){//use resize
+                if (count_of_elements - 1 <= length*0.2 && length >2) {
+                    count_of_elements--;
+                    statuses[new_key.second] = false;
+                    Record *old_data = data;
+                    data = new Record[length];
+                    auto old_statuses = statuses;
+                    statuses = new bool[length];
+                    for (int i = 0; i < length; i++) {
+                        statuses[i] = false;
                     }
+                    for (int i = 0; i < length; i++) {
+                        if (old_statuses[i]) {
+                            return add(old_data[i]);
+                        }
+                    }
+                }else{
+                    count_of_elements--;
+                    statuses[new_key.second] = false;
+                    resize(0);
+                    return true;
                 }
             }
         }
@@ -232,9 +270,11 @@ public:
             int iter_num = 1;
             bool flag = false;
             while (iter_num < length * 0.7 && statuses[key]) {
-                key += iter_num * iter_num;
-                key %= length;
+                key = GetSecondKey(key, iter_num);
                 iter_num++;
+                std::cout<<data[key].cost<<std::endl;
+                std::cout<<make_string_from_Record(data[key])<<std::endl;
+                std::cout<<(data[key] == rec)<<std::endl;
                 if (data[key] == rec) {
                     flag = true;
                     break;
@@ -247,10 +287,10 @@ public:
         return {false, -1};
     }
 
-    void print(Record rec){
+    void print(){
         for (int i=0; i< length; i++){
             if (statuses[i]){
-                std::cout<<"Key: "<<i<<", Record: "<< make_string_from_Record(data[i]);
+                std::cout<<"Key: "<<i<<", Record: "<< make_string_from_Record(data[i])<<std::endl;
             }
         }
 
@@ -268,13 +308,49 @@ public:
     }
 
     ~NewHashTable() {
-        delete data;
-        delete statuses;
+        delete[] data;
+        delete[] statuses;
+        data = nullptr;
+        statuses = nullptr;
     }
 };
 
 
 int main() {
+    Record r;
+    r.flight_number.airport="ab";
+    r.flight_number.id = 111;
+    r.time.hh = 1;
+    r.time.mm = 10;
+    r.cost = 1000;
+    NewHashTable h(10);
+    for (int i=1;i<10; i++){
+//        std::cout<<i<<std::endl;
+        h.add(r);
+        r.cost+=1;
+        r.time.hh += 1;
+        r.time.mm -= 1;
+    }
+    r.flight_number.airport="ab";
+    r.flight_number.id = 111;
+    r.time.hh = 1;
+    r.time.mm = 10;
+    r.cost = 1000;
+    for (int i = 1; i< 10; i++){
+        if (i % 2 == 1){
+            if(h.dispose(r)){
+                std::cout<<"Good"<<std::endl;
+            }else{
+                std::cout<<"Bad"<<std::endl;
+            }
+        }
+        r.cost+=1;
+        r.time.hh += 1;
+        r.time.mm -= 1;
+    }
+    std::cout<<"here!"<<std::endl;
+    h.print();
+    std::cout<<"end"<<std::endl;
 
     return 0;
 }
